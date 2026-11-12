@@ -1,0 +1,25 @@
+# Logs
+logs
+*.log
+yarn-debug.log*
+yarn-error.log*
+
+node_modules
+dist
+dist-ssr
+coverage
+*.local
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# Real env files stay out of git; only the *.example templates are committed
+.env*
+!.env*.example
+
+# Cypress
+cypress/screenshots
+cypress/videos

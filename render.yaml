@@ -1,0 +1,49 @@
+# Render Blueprint — two static sites, one per branch.
+# Each deploys only AFTER the GitHub Actions checks pass (autoDeployTrigger: checksPass).
+# The app title is NOT stored here: Render asks for it when you create the Blueprint (sync: false).
+services:
+  - type: web
+    name: ledgerly-develop
+    runtime: static
+    branch: develop
+    buildCommand: yarn install --frozen-lockfile && VITE_APP_VERSION=$RENDER_GIT_COMMIT yarn build:develop
+    staticPublishPath: ./dist
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: CYPRESS_INSTALL_BINARY
+        value: "0"
+      - key: HUSKY
+        value: "0"
+      - key: VITE_APP_ENV
+        value: development
+      - key: VITE_APP_TITLE
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  - type: web
+    name: ledgerly-main
+    runtime: static
+    branch: main
+    buildCommand: yarn install --frozen-lockfile && VITE_APP_VERSION=$RENDER_GIT_COMMIT yarn build:main
+    staticPublishPath: ./dist
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: CYPRESS_INSTALL_BINARY
+        value: "0"
+      - key: HUSKY
+        value: "0"
+      - key: VITE_APP_ENV
+        value: production
+      - key: VITE_APP_TITLE
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

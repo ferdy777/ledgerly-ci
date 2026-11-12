@@ -1,0 +1,127 @@
+name: CI
+
+# Push to ANY branch  -> Lint, then Build
+# Pull request to develop/main, or push to develop/main
+#                     -> Lint, Build, Unit, Component and E2E tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  HUSKY: "0" # don't install git hooks in CI
+  NODE_VERSION: "22"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+        env:
+          CYPRESS_INSTALL_BINARY: "0" # lint doesn't need the Cypress binary
+      - run: yarn lint
+
+  build:
+    name: Build
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # PRs use their target branch, pushes use their own branch.
+    # main -> "main" environment; everything else -> "develop" environment.
+    environment: ${{ (github.event_name == 'pull_request' && github.base_ref || github.ref_name) == 'main' && 'main' || 'develop' }}
+    env:
+      TARGET: ${{ (github.event_name == 'pull_request' && github.base_ref || github.ref_name) == 'main' && 'main' || 'develop' }}
+      VITE_APP_TITLE: ${{ secrets.VITE_APP_TITLE }}
+      VITE_APP_ENV: ${{ (github.event_name == 'pull_request' && github.base_ref || github.ref_name) == 'main' && 'production' || 'development' }}
+      VITE_APP_VERSION: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+        env:
+          CYPRESS_INSTALL_BINARY: "0"
+      - name: Build (${{ env.TARGET }})
+        run: yarn build:${{ env.TARGET }}
+
+  unit:
+    name: Unit tests
+    if: github.event_name == 'pull_request' || github.ref_name == 'develop' || github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+        env:
+          CYPRESS_INSTALL_BINARY: "0"
+      - run: yarn test:unit
+
+  component:
+    name: Component tests
+    if: github.event_name == 'pull_request' || github.ref_name == 'develop' || github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+        env:
+          CYPRESS_INSTALL_BINARY: "0"
+      - run: yarn test:component
+
+  e2e:
+    name: E2E tests
+    if: github.event_name == 'pull_request' || github.ref_name == 'develop' || github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # No backend: the app runs on mock data, so e2e just needs a title.
+      VITE_APP_TITLE: Ledgerly (CI)
+      VITE_APP_ENV: development
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+      - name: Cache Cypress binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/Cypress
+          key: cypress-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+      - run: yarn install --frozen-lockfile
+      - run: yarn build:files
+      - run: yarn test:e2e:ci
+      - name: Upload Cypress screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-screenshots
+          path: cypress/screenshots
+          if-no-files-found: ignore
